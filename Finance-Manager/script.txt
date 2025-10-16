@@ -1,0 +1,629 @@
+<script>
+// Global variables - Initialize immediately
+let selectedCategory = 'food';
+let expenses = [];
+let notes = [];
+
+// Category-based localStorage management
+class CategoryDataManager {
+  constructor() {
+    this.categories = ['food', 'transport', 'entertainment', 'shopping', 'bills', 'other'];
+    this.initializeCategories();
+  }
+
+  initializeCategories() {
+    this.categories.forEach(category => {
+      if (!localStorage.getItem(category)) {
+        localStorage.setItem(category, JSON.stringify([]));
+      }
+    });
+    localStorage.setItem('expense_categories', JSON.stringify(this.categories));
+  }
+
+  saveExpenseToCategory(expense) {
+    const category = this.mapCategoryName(expense.category) || 'other';
+    const categoryExpenses = this.getExpensesByCategory(category);
+    
+    const expenseData = {
+      id: expense.id || Date.now(),
+      amount: expense.amount,
+      description: expense.description,
+      date: expense.date || new Date().toLocaleDateString(),
+      timestamp: Date.now()
+    };
+    
+    categoryExpenses.push(expenseData);
+    localStorage.setItem(category, JSON.stringify(categoryExpenses));
+    console.log(`Expense saved to ${category}:`, expenseData);
+    return expenseData;
+  }
+
+  getExpensesByCategory(category) {
+    try {
+      const data = localStorage.getItem(category);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error(`Error loading category ${category}:`, error);
+      return [];
+    }
+  }
+
+  getAllExpenses() {
+    const allExpenses = {};
+    this.categories.forEach(category => {
+      allExpenses[category] = this.getExpensesByCategory(category);
+    });
+    return allExpenses;
+  }
+
+  getAllExpensesFlattened() {
+    const allExpenses = [];
+    this.categories.forEach(category => {
+      const categoryExpenses = this.getExpensesByCategory(category);
+      categoryExpenses.forEach(expense => {
+        allExpenses.push({
+          ...expense,
+          category: category
+        });
+      });
+    });
+    return allExpenses.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  deleteExpenseFromCategory(expenseId) {
+    let deletedFrom = null;
+    
+    this.categories.forEach(category => {
+      const categoryExpenses = this.getExpensesByCategory(category);
+      const filteredExpenses = categoryExpenses.filter(expense => expense.id !== expenseId);
+      
+      if (filteredExpenses.length !== categoryExpenses.length) {
+        localStorage.setItem(category, JSON.stringify(filteredExpenses));
+        deletedFrom = category;
+      }
+    });
+    
+    return deletedFrom;
+  }
+
+  getCategoryStats() {
+    const stats = {};
+    this.categories.forEach(category => {
+      const expenses = this.getExpensesByCategory(category);
+      const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+      stats[category] = {
+        count: expenses.length,
+        total: total,
+        average: expenses.length > 0 ? total / expenses.length : 0
+      };
+    });
+    return stats;
+  }
+
+  mapCategoryName(appCategory) {
+    const categoryMap = {
+      'food': 'food',
+      'delivery': 'food',
+      'dining': 'food',
+      'restaurant': 'food',
+      'transport': 'transport',
+      'transportation': 'transport',
+      'travel': 'transport',
+      'uber': 'transport',
+      'taxi': 'transport',
+      'entertainment': 'entertainment',
+      'fun': 'entertainment',
+      'movies': 'entertainment',
+      'games': 'entertainment',
+      'shopping': 'shopping',
+      'shop': 'shopping',
+      'store': 'shopping',
+      'clothes': 'shopping',
+      'bills': 'bills',
+      'utilities': 'bills',
+      'rent': 'bills',
+      'insurance': 'bills',
+      'other': 'other',
+      'miscellaneous': 'other',
+      'misc': 'other'
+    };
+    return categoryMap[appCategory?.toLowerCase()] || 'other';
+  }
+
+  exportAllData() {
+    const allData = this.getAllExpenses();
+    const exportData = {
+      categories: allData,
+      metadata: {
+        exportDate: new Date().toISOString(),
+        totalCategories: this.categories.length,
+        version: '2.0.0'
+      }
+    };
+    return exportData;
+  }
+
+  importData(importedData) {
+    if (importedData.categories) {
+      Object.keys(importedData.categories).forEach(category => {
+        if (this.categories.includes(category)) {
+          const existingExpenses = this.getExpensesByCategory(category);
+          const newExpenses = importedData.categories[category];
+          const mergedExpenses = [...existingExpenses, ...newExpenses];
+          localStorage.setItem(category, JSON.stringify(mergedExpenses));
+        }
+      });
+    } else if (importedData.expenses) {
+      importedData.expenses.forEach(expense => {
+        this.saveExpenseToCategory(expense);
+      });
+    }
+  }
+
+  clearAllData() {
+    this.categories.forEach(category => {
+      localStorage.setItem(category, JSON.stringify([]));
+    });
+  }
+}
+
+// Initialize category data manager immediately
+const categoryDataManager = new CategoryDataManager();
+window.categoryDataManager = categoryDataManager;
+
+// Main data initialization function
+function initializeAppData() {
+  console.log('🔄 Initializing app data...');
+  
+  try {
+    // Load expenses from category-based localStorage
+    expenses = categoryDataManager.getAllExpensesFlattened() || [];
+    console.log(`✅ Loaded ${expenses.length} expenses from localStorage`);
+
+    // Load notes from localStorage
+    const notesRaw = localStorage.getItem('financeManagerNotes');
+    if (notesRaw) {
+      try {
+        const notesData = JSON.parse(notesRaw);
+        notes = notesData.notes || [];
+        console.log(`✅ Loaded ${notes.length} notes from localStorage`);
+      } catch (e) {
+        console.error('❌ Error parsing notes:', e);
+        notes = [];
+      }
+    } else {
+      notes = [];
+    }
+
+    // Load selected category from localStorage
+    const savedCategory = localStorage.getItem('selectedCategory');
+    if (savedCategory && ['food', 'transport', 'entertainment', 'shopping', 'bills', 'other'].includes(savedCategory)) {
+      selectedCategory = savedCategory;
+      setCategory(savedCategory);
+    } else {
+      selectedCategory = 'food';
+      setCategory('food');
+    }
+
+    // Update all UI components
+    updateAllUI();
+
+    console.log('✅ App data initialization complete');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Error initializing app data:', error);
+    // Initialize with empty data on error
+    expenses = [];
+    notes = [];
+    selectedCategory = 'food';
+    return false;
+  }
+}
+
+// Update all UI components with current data
+function updateAllUI() {
+  updateExpensesList();
+  updateNotesList();
+  updateSummary();
+  updateCategoryButtons();
+  console.log('🎨 UI updated with loaded data');
+}
+
+// Update category button states
+function updateCategoryButtons() {
+  if (selectedCategory) {
+    // Update desktop buttons
+    document.querySelectorAll('.buttons button').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const activeBtn = document.getElementById(selectedCategory + 'Btn');
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    // Update mobile buttons
+    document.querySelectorAll('.buttonsSC button').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const activeBtnSC = document.getElementById(selectedCategory + 'BtnSC');
+    if (activeBtnSC) activeBtnSC.classList.add('active');
+  }
+}
+
+// Navigation functionality
+function navigateToBudget() {
+  alert('Navigating to Budget Planner...');
+}
+
+// Category selection
+function setCategory(category) {
+  selectedCategory = category;
+  
+  // Save selected category
+  localStorage.setItem('selectedCategory', category);
+  
+  // Update button states
+  updateCategoryButtons();
+}
+
+// Add expense functionality
+function addExpense() {
+  const amountInput = document.getElementById('amountInput');
+  const descriptionInput = document.getElementById('descriptionInput');
+  
+  if (!amountInput || !descriptionInput) {
+    console.error('Input elements not found');
+    return;
+  }
+  
+  const amount = parseFloat(amountInput.value);
+  const description = descriptionInput.value.trim();
+  
+  if (!amount || amount <= 0) {
+    showNotification('Please enter a valid amount!', 'error');
+    return;
+  }
+  
+  if (!description) {
+    showNotification('Please enter a description!', 'error');
+    return;
+  }
+  
+  const expense = {
+    id: Date.now(),
+    amount: amount,
+    description: description,
+    category: selectedCategory,
+    date: new Date().toLocaleDateString(),
+    timestamp: Date.now()
+  };
+  
+  // Save to category-based storage
+  categoryDataManager.saveExpenseToCategory(expense);
+  
+  // Reload data and update UI immediately
+  initializeAppData();
+  
+  // Clear inputs
+  amountInput.value = '';
+  descriptionInput.value = '';
+  
+  showNotification('Expense added successfully!', 'success');
+}
+
+// Add note functionality
+function addNote() {
+  const noteInput = document.getElementById('noteInput');
+  const noteDropdown = document.getElementById('noteDropdown');
+  
+  if (!noteInput || !noteDropdown) {
+    console.error('Note input elements not found');
+    return;
+  }
+  
+  const noteText = noteInput.value.trim();
+  const noteType = noteDropdown.value;
+  
+  if (!noteText) {
+    showNotification('Please enter a note!', 'error');
+    return;
+  }
+  
+  const note = {
+    id: Date.now(),
+    text: noteText,
+    type: noteType,
+    date: new Date().toLocaleDateString(),
+    timestamp: Date.now()
+  };
+  
+  // Add to notes array and save immediately
+  notes.push(note);
+  
+  const notesData = {
+    notes: notes,
+    timestamp: Date.now(),
+    version: '2.0.0'
+  };
+  localStorage.setItem('financeManagerNotes', JSON.stringify(notesData));
+  
+  // Update UI
+  updateNotesList();
+  
+  // Clear input
+  noteInput.value = '';
+  showNotification('Note added successfully!', 'success');
+}
+
+// Update expenses list
+function updateExpensesList() {
+  const expensesList = document.getElementById('expensesList');
+  
+  if (!expensesList) {
+    console.error('Expenses list element not found');
+    return;
+  }
+  
+  if (!expenses || expenses.length === 0) {
+    expensesList.innerHTML = '<p style="text-align: center; color: #666; font-style: italic; margin-top: 2rem;">No expenses added yet. Add your first expense above!</p>';
+    return;
+  }
+  
+  // Sort expenses by timestamp (newest first)
+  const sortedExpenses = expenses.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  
+  expensesList.innerHTML = sortedExpenses.map(expense => `
+    <div class="expense-item">
+      <div>
+        <div class="description">${expense.description}</div>
+        <div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">${expense.date}</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <span class="category">${getCategoryIcon(expense.category)} ${expense.category}</span>
+        <span class="amount">₹ ${expense.amount.toLocaleString('en-IN')}</span>
+        <button class="delete-btn" onclick="deleteExpense(${expense.id})">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Update notes list
+function updateNotesList() {
+  const noteContainer = document.getElementById('noteContainer');
+  
+  if (!noteContainer) {
+    console.error('Note container element not found');
+    return;
+  }
+  
+  if (!notes || notes.length === 0) {
+    noteContainer.innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">No notes yet. Add your first note below!</p>';
+    return;
+  }
+  
+  // Sort notes by timestamp (newest first)
+  const sortedNotes = notes.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  
+  noteContainer.innerHTML = sortedNotes.map(note => `
+    <div style="padding: 0.75rem; margin-bottom: 0.5rem; background: #f8fafc; border-radius: 8px; border-left: 3px solid #667eea;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+        <div style="flex: 1;">
+          <div style="font-weight: 600; color: #333;">${getNoteIcon(note.type)} ${note.text}</div>
+          <div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">${note.date}</div>
+        </div>
+        <button onclick="deleteNote(${note.id})" style="background: #e53e3e; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Update summary
+function updateSummary() {
+  const summary = document.getElementById('summary');
+  const totalAmount = document.getElementById('totalAmount');
+  
+  if (!summary || !totalAmount) {
+    console.error('Summary elements not found');
+    return;
+  }
+  
+  if (!expenses || expenses.length === 0) {
+    summary.style.display = 'none';
+    return;
+  }
+  
+  const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  totalAmount.textContent = `₹ ${total.toLocaleString('en-IN')}`;
+  summary.style.display = 'block';
+}
+
+// Delete expense
+function deleteExpense(id) {
+  const deletedFrom = categoryDataManager.deleteExpenseFromCategory(id);
+  if (deletedFrom) {
+    // Reload data and update UI immediately
+    initializeAppData();
+    showNotification(`Expense deleted from ${deletedFrom}!`, 'success');
+  }
+}
+
+// Delete note
+function deleteNote(id) {
+  notes = notes.filter(note => note.id !== id);
+  
+  // Save to localStorage immediately
+  const notesData = {
+    notes: notes,
+    timestamp: Date.now(),
+    version: '2.0.0'
+  };
+  localStorage.setItem('financeManagerNotes', JSON.stringify(notesData));
+  
+  // Update UI
+  updateNotesList();
+  showNotification('Note deleted!', 'success');
+}
+
+// Get category icon
+function getCategoryIcon(category) {
+  const icons = {
+    food: '🍽️',
+    transport: '🚗',
+    entertainment: '🎮',
+    shopping: '🛍️',
+    bills: '📄',
+    other: '📝'
+  };
+  return icons[category] || '📝';
+}
+
+// Get note icon
+function getNoteIcon(type) {
+  const icons = {
+    general: '📝',
+    reminder: '⏰',
+    goal: '🎯',
+    tip: '💡'
+  };
+  return icons[type] || '📝';
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+  const notification = document.getElementById('notification');
+  const notificationText = document.getElementById('notificationText');
+  
+  if (!notification || !notificationText) {
+    console.error('Notification elements not found');
+    return;
+  }
+  
+  notificationText.textContent = message;
+  notification.style.background = type === 'error' ? '#e53e3e' : type === 'warning' ? '#f59e0b' : '#48bb78';
+  notification.classList.add('show');
+  
+  setTimeout(() => {
+    notification.classList.remove('show');
+  }, 3000);
+}
+
+// Enhanced initialization when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🚀 DOM loaded, initializing Finance Manager...');
+  
+  // Initialize app data (load from localStorage)
+  const dataLoaded = initializeAppData();
+  
+  if (!dataLoaded) {
+    console.warn('⚠️ Data initialization failed, using defaults');
+    // Set defaults if initialization failed
+    expenses = [];
+    notes = [];
+    selectedCategory = 'food';
+    setCategory('food');
+  }
+  
+  // Setup keyboard shortcuts for better UX
+  setupKeyboardShortcuts();
+  
+  // Setup periodic data validation
+  setupDataValidation();
+  
+  console.log('✅ Finance Manager initialized successfully');
+});
+
+// Setup keyboard shortcuts
+function setupKeyboardShortcuts() {
+  const amountInput = document.getElementById('amountInput');
+  const descriptionInput = document.getElementById('descriptionInput');
+  const noteInput = document.getElementById('noteInput');
+  
+  if (amountInput) {
+    amountInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        if (descriptionInput) descriptionInput.focus();
+      }
+    });
+  }
+  
+  if (descriptionInput) {
+    descriptionInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        addExpense();
+      }
+    });
+  }
+  
+  if (noteInput) {
+    noteInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        addNote();
+      }
+    });
+  }
+}
+
+// Setup periodic data validation
+function setupDataValidation() {
+  // Check data consistency every 30 seconds
+  setInterval(() => {
+    validateDataConsistency();
+  }, 30000);
+  
+  // Validate on window focus (when user returns to tab)
+  window.addEventListener('focus', () => {
+    validateDataConsistency();
+  });
+}
+
+// Validate data consistency
+function validateDataConsistency() {
+  try {
+    const storedExpenses = categoryDataManager.getAllExpensesFlattened() || [];
+    const currentExpenses = expenses || [];
+    
+    if (storedExpenses.length !== currentExpenses.length) {
+      console.warn('⚠️ Expense data inconsistency detected, reloading...');
+      initializeAppData();
+      return;
+    }
+    
+    const notesRaw = localStorage.getItem('financeManagerNotes');
+    let storedNotes = [];
+    if (notesRaw) {
+      try {
+        storedNotes = JSON.parse(notesRaw).notes || [];
+      } catch (e) {
+        storedNotes = [];
+      }
+    }
+    
+    const currentNotes = notes || [];
+    if (storedNotes.length !== currentNotes.length) {
+      console.warn('⚠️ Notes data inconsistency detected, reloading...');
+      initializeAppData();
+      return;
+    }
+    
+    console.log('✅ Data consistency validated');
+    
+  } catch (error) {
+    console.error('❌ Error validating data consistency:', error);
+    initializeAppData();
+  }
+}
+
+// Make sure global variables are accessible
+window.expenses = expenses;
+window.notes = notes;
+window.selectedCategory = selectedCategory;
+window.addExpense = addExpense;
+window.addNote = addNote;
+window.deleteExpense = deleteExpense;
+window.deleteNote = deleteNote;
+window.setCategory = setCategory;
+window.navigateToBudget = navigateToBudget;
+</script>
