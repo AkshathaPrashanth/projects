@@ -1,9 +1,10 @@
 Aura AI | High-Performance Synthetic Intelligence
 Aura AI is a state-of-the-art, multi-modal personal assistant designed with a focus on speed, precision, and a high-end "true black" aesthetic. Powered by the Gemini 3 Flash model, it handles complex reasoning, multi-file analysis, and long-form synthesis within a beautifully crafted, low-latency interface.
 
-**# Run and deploy your  app**
+**## Run and deploy your  app**
 This contains everything you need to run your app locally.
-**#Setup & Installation**
+
+**##Setup & Installation**
 git clone https://github.com/your-username/aura-ai.git
 cd aura-ai
 The application expects the key via the process.env.API_KEY environment variable.
