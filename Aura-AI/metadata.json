@@ -1,0 +1,9 @@
+
+{
+  "name": "Aura AI",
+  "description": "An advanced, high-performance personal AI assistant with integrated knowledge management and file analysis capabilities.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
